@@ -12,7 +12,7 @@
 // --- Global Instances (Admin) ---
 MorseDisplay display(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
 // Change this line in your Admin Global Instances:
-MorseTransmitter transmitter(BUTTON_PIN, -1, LED_PIN, ADMIN_BUZZER_PIN);
+MorseTransmitter transmitter(BUTTON_PIN, ENTER_BTN_PIN, LED_PIN, ADMIN_BUZZER_PIN);
 //MorseTransmitter transmitter(BUTTON_PIN, LED_PIN, ADMIN_BUZZER_PIN);
 BluetoothInterface bt(ADMIN_BT_RX_PIN, ADMIN_BT_TX_PIN);
 RTC_DS3231 rtc;
