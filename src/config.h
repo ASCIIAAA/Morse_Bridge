@@ -6,6 +6,7 @@
 // --- Common Hardware Pins (Used by BOTH units) ---
 #define LED_PIN 4       // Built-in LED
 #define BUTTON_PIN 2     // Manual Morse input button
+#define ENTER_BTN_PIN 3  // button for Space (Click) and Send (Hold)
 #define LCD_ADDRESS 0x27 // I2C address for the LCD
 #define LCD_COLS 16
 #define LCD_ROWS 2

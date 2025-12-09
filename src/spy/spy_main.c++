@@ -12,8 +12,9 @@ MorseDisplay display(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
 // The transmitter class is used for BOTH:
 // 1. Sending Morse (LED only, no buzzer)
 // 2. Decoding manual button input
-MorseTransmitter transmitter(BUTTON_PIN, LED_PIN, SPY_BUZZER_PIN); // Buzzer pin is -1
-
+// Add ENTER_BTN_PIN in the second position
+MorseTransmitter transmitter(BUTTON_PIN, ENTER_BTN_PIN, LED_PIN, SPY_BUZZER_PIN);
+// Change this line in your Spy Global Instances:
 RF24 radio(NRF_CE_PIN, NRF_CSN_PIN);
 RadioInterface nrf(radio, radioPipeAddress);
 

@@ -3,17 +3,12 @@
 
 #include <Arduino.h>
 
-// Forward declaration of the MorseDisplay class
 class MorseDisplay; 
 
 // --- TIMING CONSTANTS ---
 const long T_UNIT_MS = 200; 
-
-// Output Timings
 const long DOT_DURATION_MS = T_UNIT_MS * 1;
 const long DASH_DURATION_MS = T_UNIT_MS * 3;
-
-// Gap Timings
 const long ELEMENT_GAP_MS = T_UNIT_MS * 1;
 const long CHAR_GAP_MS = T_UNIT_MS * 3; 
 const long WORD_GAP_MS = T_UNIT_MS * 7; 
@@ -22,51 +17,48 @@ const long WORD_GAP_MS = T_UNIT_MS * 7;
 const long MIN_DOT_DURATION_MS = 50;
 const long MAX_DOT_DURATION_MS = T_UNIT_MS * 2;
 const long MIN_DASH_DURATION_MS = T_UNIT_MS * 2.5;
-const long DECODE_TIMEOUT_MS = 700; // Time since last button release to trigger CHAR decode
+const long DECODE_TIMEOUT_MS = 700; 
 
-// *** NEW: Time to wait before "sending" the full message ***
-const long MESSAGE_TIMEOUT_MS = 2000; // 2 seconds of inactivity = message complete
+// Button 2 Timings
+const long ENTER_HOLD_TIME_MS = 1000; // Hold for 1s to SEND
 
-// --- CLASS DEFINITION ---
 class MorseTransmitter {
 public:
     struct MorseCodeEntry {
-    char character;
-    const char* sequence;};
+        char character;
+        const char* sequence;
+    };
 
 private:
     int btnPin;
+    int enterBtnPin; // NEW: Second button
     int ledPin;
     int buzzerPin;
 
-    // State Management for Manual Input
+    // State Management for Morse Input
     int lastButtonState = HIGH; 
     unsigned long pressStartTime = 0;
     unsigned long lastActivityTime = 0; 
     String manualSequence = "";
 
-    // *** NEW: Buffer for the outgoing message ***
-    String decodedMessageBuffer = "";
+    // State Management for Enter Button
+    int lastEnterState = HIGH;
+    unsigned long enterPressStartTime = 0;
 
-    // Pointer to the external display object
+    String decodedMessageBuffer = "";
     MorseDisplay *display; 
 
-    // Internal Helper Functions
     void generateSignal(char type);
     const char* getMorseCode(char c);
     void decodeCurrentSequence();
 
 public:
-    // Constructor
-    MorseTransmitter(int btnPin, int ledP, int buzzerP);
+    // Updated Constructor
+    MorseTransmitter(int btnPin, int enterBtnPin, int ledP, int buzzerP);
 
-    // Core Functions
     void begin(MorseDisplay* displayPtr); 
-    
-    // *** MODIFIED: update() now returns a String ***
     String update(); 
-
     void processText(const String& text);  
 };
 
-#endif // MORSE_TRANSMITTER_H
+#endif
