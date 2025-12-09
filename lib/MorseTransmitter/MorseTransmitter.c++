@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <ctype.h> 
 
+// --- UPDATED MORSE TABLE ---
+// We added '!' mapped to "..--" for your Duress Code
 const MorseTransmitter::MorseCodeEntry morseCodeTable[] = {
   {'A', ".-"}, {'B', "-..."}, {'C', "-.-."}, {'D', "-.."},  {'E', "."},
   {'F', "..-."}, {'G', "--."},  {'H', "...."}, {'I', ".."},  {'J', ".---"},
@@ -12,11 +14,11 @@ const MorseTransmitter::MorseCodeEntry morseCodeTable[] = {
   {'Z', "--.."},
   {'0', "-----"}, {'1', ".----"}, {'2', "..---"}, {'3', "...--"}, {'4', "....-"},
   {'5', "....."}, {'6', "-...."}, {'7', "--..."}, {'8', "---.."}, {'9', "----."},
-  {' ', " "}
+  {' ', " "},
+  {'!', "..--"} // <--- NEW: The Duress Code (Not a standard letter)
 };
 const int MORSE_TABLE_SIZE = sizeof(morseCodeTable) / sizeof(morseCodeTable[0]);
 
-// --- Constructor ---
 MorseTransmitter::MorseTransmitter(int btnPin, int enterBtnPin, int ledP, int buzzerP)
   : btnPin(btnPin), enterBtnPin(enterBtnPin), ledPin(ledP), buzzerPin(buzzerP), display(nullptr) {}
 
@@ -29,8 +31,12 @@ void MorseTransmitter::begin(MorseDisplay* displayPtr) {
     pinMode(ledPin, OUTPUT);
     if (buzzerPin != -1) pinMode(buzzerPin, OUTPUT);
     
-    // Ensure Serial is on for debugging
     if (!Serial) Serial.begin(9600);
+
+    // Startup Lock
+    isLocked = true;
+    Serial.println(F("--- SYSTEM LOCKED ---"));
+    if (display) display->setStatus(F("LOCKED: Enter PW"));
 }
 
 void MorseTransmitter::generateSignal(char type) {
@@ -39,7 +45,6 @@ void MorseTransmitter::generateSignal(char type) {
   else if (type == '-') duration = DASH_DURATION_MS; 
   else return;
 
-  // VISUAL DEBUG: Print the dot/dash being played
   Serial.print(type); 
 
   digitalWrite(ledPin, HIGH);
@@ -58,16 +63,47 @@ const char* MorseTransmitter::getMorseCode(char c) {
   return nullptr;
 }
 
-void MorseTransmitter::processText(const String& text) {
-  Serial.print(F("[TX] Playing: '")); 
-  Serial.print(text); 
-  Serial.print(F("' -> "));
+void MorseTransmitter::checkUnlock() {
+    if (manualSequence.length() == 0) return;
+    unlockBuffer += manualSequence;
+    Serial.print(F(" [Checking PW] So far: ")); Serial.println(unlockBuffer);
+    
+    if (unlockBuffer.equals(PASSCODE)) {
+        isLocked = false;
+        Serial.println(F("--- ACCESS GRANTED ---"));
+        if (display) {
+            display->clearAll();
+            display->setStatus(F("ACCESS GRANTED"));
+            delay(1000);
+            display->setStatus(F("Ready"));
+        }
+        unlockBuffer = "";
+    } else if (unlockBuffer.length() > PASSCODE.length()) {
+        if (display) display->setStatus(F("WRONG PASSCODE"));
+        delay(500);
+        if (display) display->setStatus(F("LOCKED: Enter PW"));
+        unlockBuffer = "";
+    }
+    manualSequence = "";
+}
 
+// --- FEATURE 3: MACRO EXPANSION ---
+String MorseTransmitter::expandMacro(String input) {
+    // You can add more codes here!
+    if (input == "S1") return "SECTOR 1 SECURE";
+    if (input == "S2") return "SECTOR 2 COMPROMISED";
+    if (input == "RTB") return "RETURNING TO BASE";
+    if (input == "B9") return "BATTERY CRITICAL";
+    if (input == "73") return "BEST REGARDS";
+    return input; // Return original if no match
+}
+
+void MorseTransmitter::processText(const String& text) {
+  Serial.print(F("[TX] Playing: '")); Serial.print(text); Serial.print(F("' -> "));
   if (display) {
       display->clearAll();
       display->setStatus(F("RX Mode..."));
   }
-  
   for (unsigned int i = 0; i < text.length(); ++i) {
     char c = text[i];
     const char* morseSeq = getMorseCode(c);
@@ -77,38 +113,26 @@ void MorseTransmitter::processText(const String& text) {
              String txStatus = F("RX: "); txStatus += morseSeq;
              display->setStatus(txStatus);
         }
-        
-        // Play the sequence
-        for (int j = 0; morseSeq[j] != '\0'; ++j) {
-            generateSignal(morseSeq[j]); // This now prints dots/dashes too
-        }
-        
-        Serial.print(" "); // Space between letters in Serial Monitor
-
+        for (int j = 0; morseSeq[j] != '\0'; ++j) generateSignal(morseSeq[j]); 
+        Serial.print(" "); 
         if (c != ' ') delay(CHAR_GAP_MS - ELEMENT_GAP_MS); 
         else delay(WORD_GAP_MS - ELEMENT_GAP_MS);
     }
   }
   Serial.println(F(" [DONE]"));
-  
-  if (display) {
-      delay(1000);
-      display->setStatus(F("Ready"));
-  }
+  if (display) { delay(1000); display->setStatus(F("Ready")); }
 }
 
 void MorseTransmitter::decodeCurrentSequence() {
-  if (manualSequence.length() == 0) return;
+  if (isLocked) { checkUnlock(); return; }
 
-  Serial.print(F(" -> Seq: "));
-  Serial.print(manualSequence);
+  if (manualSequence.length() == 0) return;
+  Serial.print(F(" -> Seq: ")); Serial.print(manualSequence);
 
   for (int i = 0; i < MORSE_TABLE_SIZE; ++i) {
     if (manualSequence.equals(morseCodeTable[i].sequence)) {
       char decodedChar = morseCodeTable[i].character;
-      
-      Serial.print(F(" -> Char: "));
-      Serial.println(decodedChar);
+      Serial.print(F(" -> Char: ")); Serial.println(decodedChar);
       
       if (display) display->appendDecodedCharacter(decodedChar);
       decodedMessageBuffer += decodedChar;
@@ -123,72 +147,81 @@ void MorseTransmitter::decodeCurrentSequence() {
   manualSequence = "";
 }
 
-// --- MAIN LOOP ---
 String MorseTransmitter::update() {
   unsigned long currentTime = millis();
   String messageToSend = ""; 
 
-  // --- 1. HANDLE MORSE BUTTON (Pin 2) ---
+  // --- 1. HANDLE MORSE BUTTON ---
   int reading = digitalRead(btnPin);
-
-  if (reading == LOW && lastButtonState == HIGH) {
-    pressStartTime = currentTime; // Button Pressed
-  } 
-  else if (reading == HIGH && lastButtonState == LOW) { // Button Released
+  if (reading == LOW && lastButtonState == HIGH) { pressStartTime = currentTime; } 
+  else if (reading == HIGH && lastButtonState == LOW) { 
     unsigned long pressDuration = currentTime - pressStartTime;
     char signalType = 0;
     
-    // INCREASED DEBOUNCE: Ignore anything less than 50ms
     if (pressDuration > 50) {
-        // LOGIC FIX: Removed "Dead Zone" between 400ms and 500ms
-        // < 400ms = DOT
-        // > 400ms = DASH
-        if (pressDuration <= MAX_DOT_DURATION_MS) {
-            signalType = '.';
-        } else {
-            signalType = '-';
-        }
+        if (pressDuration <= MAX_DOT_DURATION_MS) signalType = '.';
+        else signalType = '-';
         
-        // DEBUG PRINT: Tell user exactly how long they pressed
-        Serial.print(F("[DEBUG] "));
-        Serial.print(pressDuration);
-        Serial.print(F("ms -> "));
-        Serial.println(signalType);
+        Serial.print(F("[DEBUG] ")); Serial.print(pressDuration);
+        Serial.print(F("ms -> ")); Serial.println(signalType);
         
         if (signalType) {
           manualSequence += signalType;
           generateSignal(signalType); 
           lastActivityTime = currentTime; 
-          if (display) display->updateInputSequence(manualSequence);
+          if (display && !isLocked) display->updateInputSequence(manualSequence);
         }
     }
   }
   lastButtonState = reading;
 
-  // Auto-decode character after timeout (Char Gap)
   if (reading == HIGH && manualSequence.length() > 0 && lastActivityTime > 0) {
     if (currentTime - lastActivityTime >= DECODE_TIMEOUT_MS) {
-      decodeCurrentSequence(); 
-      lastActivityTime = 0; 
+      decodeCurrentSequence(); lastActivityTime = 0; 
     }
   }
 
-  // --- 2. HANDLE ENTER/SPACE BUTTON (Pin 3) ---
-  if (enterBtnPin != -1) {
+  // --- 2. HANDLE ENTER/SPACE BUTTON ---
+  if (enterBtnPin != -1 && !isLocked) { 
       int enterReading = digitalRead(enterBtnPin);
 
-      if (enterReading == LOW && lastEnterState == HIGH) {
-          enterPressStartTime = currentTime; 
-      }
+      if (enterReading == LOW && lastEnterState == HIGH) { enterPressStartTime = currentTime; }
       else if (enterReading == HIGH && lastEnterState == LOW) { 
           unsigned long enterDuration = currentTime - enterPressStartTime;
 
-          // Ignore short glitches
           if (enterDuration > 50) {
               if (enterDuration >= 1000) { 
-                  // --- LONG PRESS (>1s): SEND MESSAGE ---
+                  // --- LONG PRESS: SEND MESSAGE ---
                   if (decodedMessageBuffer.length() > 0) {
-                      messageToSend = decodedMessageBuffer;
+                      
+                      // === FEATURE 2: SILENT DURESS CHECK ===
+                      if (decodedMessageBuffer == DURESS_TRIGGER) {
+                          Serial.println(F("[ALERT] DURESS TRIGGERED!"));
+                          messageToSend = DURESS_MESSAGE; 
+                          
+                          // DECEPTION: Tell user it worked normally
+                          if (display) {
+                              display->setStatus(F("Sending..."));
+                              delay(500);
+                              display->clearAll();
+                              display->setStatus(F("Msg Sent OK")); 
+                          }
+                          decodedMessageBuffer = ""; 
+                          return messageToSend; // Exit immediately
+                      }
+
+                      // === FEATURE 3: MACRO EXPANSION ===
+                      // Try to expand short code (e.g. "S1")
+                      String expanded = expandMacro(decodedMessageBuffer);
+                      
+                      if (expanded != decodedMessageBuffer) {
+                          Serial.print(F("[MACRO] Expanded: "));
+                          Serial.println(expanded);
+                          messageToSend = expanded;
+                      } else {
+                          messageToSend = decodedMessageBuffer;
+                      }
+                      
                       decodedMessageBuffer = ""; 
                       if (display) {
                           display->setStatus(F("Sending..."));
@@ -199,7 +232,6 @@ String MorseTransmitter::update() {
               } else {
                   // --- SHORT PRESS: ADD SPACE ---
                   decodedMessageBuffer += ' ';
-                  Serial.println(F("[INPUT] Space Added"));
                   if (display) {
                       display->appendDecodedCharacter('_'); 
                       display->setStatus(F("Space Added"));
@@ -209,6 +241,5 @@ String MorseTransmitter::update() {
       }
       lastEnterState = enterReading;
   }
-
   return messageToSend;
 }
