@@ -93,7 +93,6 @@ void loop() {
     
     // --- Mode 3: Manual Button Input (Optional) ---
     // Uncomment this if you want the Admin to also send via button
-    /*
     String adminMsg = transmitter.update();
     if (adminMsg.length() > 0) {
         Serial.println("Sending manual msg to Spy: " + adminMsg);
@@ -103,5 +102,4 @@ void loop() {
             logger.log("ERROR", "Manual send failed");
         }
     }
-    */
 }

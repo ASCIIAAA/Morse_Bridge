@@ -1,6 +1,8 @@
 #ifndef MORSE_CONFIG_H
 #define MORSE_CONFIG_H
 
+#include <Arduino.h> // <-- ADD THIS LINE
+
 // --- Common Hardware Pins (Used by BOTH units) ---
 #define LED_PIN 4       // Built-in LED
 #define BUTTON_PIN 2     // Manual Morse input button

@@ -7,8 +7,10 @@
 class MorseDisplay {
 private:
     LiquidCrystal_I2C lcd;
-    const uint8_t LCD_COLS;
-    const uint8_t LCD_ROWS;
+    
+    // FIX: Renamed these variables to avoid a name collision
+    const uint8_t lcdCols_;
+    const uint8_t lcdRows_;
 
     // We will use two separate strings to manage the content of the two lines
     String line0Buffer; // Decoded/Sent Message

@@ -1,8 +1,9 @@
 #include "MorseDisplay.h"
 
-// --- Constructor ---
+// --- Constructor (CORRECTED INITIALIZER LIST) ---
 MorseDisplay::MorseDisplay(uint8_t lcdAddress, uint8_t lcdCols, uint8_t lcdRows)
-    : lcd(lcdAddress, lcdCols, lcdRows), LCD_COLS(lcdCols), LCD_ROWS(lcdRows) {
+    // Initialize member variables using the new names (lcdCols_, lcdRows_)
+    : lcd(lcdAddress, lcdCols, lcdRows), lcdCols_(lcdCols), lcdRows_(lcdRows) {
     // Constructor initializes the LiquidCrystal_I2C object
 }
 
@@ -18,16 +19,18 @@ void MorseDisplay::begin() {
 // --- Internal Helper: Clears one line ---
 void MorseDisplay::clearLine(uint8_t line) {
     lcd.setCursor(0, line);
-    for (uint8_t i = 0; i < LCD_COLS; ++i) {
+    // Use the corrected member variable: lcdCols_
+    for (uint8_t i = 0; i < lcdCols_; ++i) {
         lcd.print(' ');
     }
 }
 
 // --- Internal Helper: Shifts Line 0 left if it gets too long ---
 void MorseDisplay::shiftLine0Left() {
-    if (line0Buffer.length() > LCD_COLS) {
-        // Keep only the latest LCD_COLS characters
-        line0Buffer = line0Buffer.substring(line0Buffer.length() - LCD_COLS);
+    // Use the corrected member variable: lcdCols_
+    if (line0Buffer.length() > lcdCols_) {
+        // Keep only the latest lcdCols_ characters
+        line0Buffer = line0Buffer.substring(line0Buffer.length() - lcdCols_);
         
         // Redraw the entire line from the buffer
         lcd.setCursor(0, 0);
@@ -60,9 +63,12 @@ void MorseDisplay::setStatus(const String& status) {
 }
 
 void MorseDisplay::updateInputSequence(const String& sequence) {
-    line1Buffer = String(F("Input: ")) + sequence;
-    if (line1Buffer.length() > LCD_COLS) {
-        line1Buffer = line1Buffer.substring(0, LCD_COLS);
+    // String concatenation fix applied here
+    line1Buffer = String(F("Input: ")) + sequence; 
+    
+    // Use the corrected member variable: lcdCols_
+    if (line1Buffer.length() > lcdCols_) {
+        line1Buffer = line1Buffer.substring(0, lcdCols_);
     }
     
     clearLine(1);
@@ -80,7 +86,8 @@ void MorseDisplay::appendDecodedCharacter(char c) {
     shiftLine0Left(); // Handle overflow
     
     // Display only the appended character to reduce flicker
-    if (line0Buffer.length() <= LCD_COLS) {
+    // Use the corrected member variable: lcdCols_
+    if (line0Buffer.length() <= lcdCols_) {
         lcd.setCursor(line0Buffer.length() - 1, 0);
         lcd.print(line0Buffer.charAt(line0Buffer.length() - 1));
     } else {
