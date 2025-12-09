@@ -16,7 +16,7 @@ const MorseTransmitter::MorseCodeEntry morseCodeTable[] = {
 };
 const int MORSE_TABLE_SIZE = sizeof(morseCodeTable) / sizeof(morseCodeTable[0]);
 
-// --- Updated Constructor ---
+// --- Constructor ---
 MorseTransmitter::MorseTransmitter(int btnPin, int enterBtnPin, int ledP, int buzzerP)
   : btnPin(btnPin), enterBtnPin(enterBtnPin), ledPin(ledP), buzzerPin(buzzerP), display(nullptr) {}
 
@@ -25,17 +25,12 @@ void MorseTransmitter::begin(MorseDisplay* displayPtr) {
     if (display) display->begin(); 
 
     pinMode(btnPin, INPUT_PULLUP);
-    
-    // Setup Enter Button
-    if (enterBtnPin != -1) {
-        pinMode(enterBtnPin, INPUT_PULLUP);
-    }
-
+    if (enterBtnPin != -1) pinMode(enterBtnPin, INPUT_PULLUP);
     pinMode(ledPin, OUTPUT);
     if (buzzerPin != -1) pinMode(buzzerPin, OUTPUT);
     
-    Serial.begin(9600);
-    Serial.println(F("--- MORSE BRIDGE V1.2 (Buffered Input) ---"));
+    // Ensure Serial is on for debugging
+    if (!Serial) Serial.begin(9600);
 }
 
 void MorseTransmitter::generateSignal(char type) {
@@ -43,6 +38,9 @@ void MorseTransmitter::generateSignal(char type) {
   if (type == '.') duration = DOT_DURATION_MS; 
   else if (type == '-') duration = DASH_DURATION_MS; 
   else return;
+
+  // VISUAL DEBUG: Print the dot/dash being played
+  Serial.print(type); 
 
   digitalWrite(ledPin, HIGH);
   if (buzzerPin != -1) digitalWrite(buzzerPin, HIGH);
@@ -61,27 +59,38 @@ const char* MorseTransmitter::getMorseCode(char c) {
 }
 
 void MorseTransmitter::processText(const String& text) {
-  Serial.print(F("[TX] Sending: '")); Serial.print(text); Serial.println(F("'"));
+  Serial.print(F("[TX] Playing: '")); 
+  Serial.print(text); 
+  Serial.print(F("' -> "));
+
   if (display) {
       display->clearAll();
-      display->setStatus(F("TX Mode..."));
+      display->setStatus(F("RX Mode..."));
   }
+  
   for (unsigned int i = 0; i < text.length(); ++i) {
     char c = text[i];
     const char* morseSeq = getMorseCode(c);
     if (morseSeq) {
         if (display) {
              display->appendDecodedCharacter(c);
-             String txStatus = F("TX: "); txStatus += morseSeq;
+             String txStatus = F("RX: "); txStatus += morseSeq;
              display->setStatus(txStatus);
         }
+        
+        // Play the sequence
         for (int j = 0; morseSeq[j] != '\0'; ++j) {
-            generateSignal(morseSeq[j]);
+            generateSignal(morseSeq[j]); // This now prints dots/dashes too
         }
+        
+        Serial.print(" "); // Space between letters in Serial Monitor
+
         if (c != ' ') delay(CHAR_GAP_MS - ELEMENT_GAP_MS); 
         else delay(WORD_GAP_MS - ELEMENT_GAP_MS);
     }
   }
+  Serial.println(F(" [DONE]"));
+  
   if (display) {
       delay(1000);
       display->setStatus(F("Ready"));
@@ -91,21 +100,25 @@ void MorseTransmitter::processText(const String& text) {
 void MorseTransmitter::decodeCurrentSequence() {
   if (manualSequence.length() == 0) return;
 
-  // Search Table
+  Serial.print(F(" -> Seq: "));
+  Serial.print(manualSequence);
+
   for (int i = 0; i < MORSE_TABLE_SIZE; ++i) {
     if (manualSequence.equals(morseCodeTable[i].sequence)) {
       char decodedChar = morseCodeTable[i].character;
+      
+      Serial.print(F(" -> Char: "));
+      Serial.println(decodedChar);
       
       if (display) display->appendDecodedCharacter(decodedChar);
       decodedMessageBuffer += decodedChar;
       
       manualSequence = "";
-      // Update display with "Building" status
       if (display) display->setStatus(String(F("Msg: ")) + decodedMessageBuffer);
       return;
     }
   }
-  // Error
+  Serial.println(F(" -> UNKNOWN"));
   if (display) display->setStatus(F("Unknown Char"));
   manualSequence = "";
 }
@@ -125,10 +138,22 @@ String MorseTransmitter::update() {
     unsigned long pressDuration = currentTime - pressStartTime;
     char signalType = 0;
     
-    // Ignore extremely short glitches (<20ms)
-    if (pressDuration > 20) {
-        if (pressDuration >= MIN_DASH_DURATION_MS) signalType = '-';
-        else if (pressDuration >= MIN_DOT_DURATION_MS) signalType = '.';
+    // INCREASED DEBOUNCE: Ignore anything less than 50ms
+    if (pressDuration > 50) {
+        // LOGIC FIX: Removed "Dead Zone" between 400ms and 500ms
+        // < 400ms = DOT
+        // > 400ms = DASH
+        if (pressDuration <= MAX_DOT_DURATION_MS) {
+            signalType = '.';
+        } else {
+            signalType = '-';
+        }
+        
+        // DEBUG PRINT: Tell user exactly how long they pressed
+        Serial.print(F("[DEBUG] "));
+        Serial.print(pressDuration);
+        Serial.print(F("ms -> "));
+        Serial.println(signalType);
         
         if (signalType) {
           manualSequence += signalType;
@@ -153,28 +178,32 @@ String MorseTransmitter::update() {
       int enterReading = digitalRead(enterBtnPin);
 
       if (enterReading == LOW && lastEnterState == HIGH) {
-          enterPressStartTime = currentTime; // Enter Pressed
+          enterPressStartTime = currentTime; 
       }
-      else if (enterReading == HIGH && lastEnterState == LOW) { // Enter Released
+      else if (enterReading == HIGH && lastEnterState == LOW) { 
           unsigned long enterDuration = currentTime - enterPressStartTime;
 
-          if (enterDuration >= ENTER_HOLD_TIME_MS) {
-              // --- LONG PRESS: SEND MESSAGE ---
-              if (decodedMessageBuffer.length() > 0) {
-                  messageToSend = decodedMessageBuffer;
-                  decodedMessageBuffer = ""; // Clear
-                  if (display) {
-                      display->setStatus(F("Sending..."));
-                      delay(500);
-                      display->clearAll();
+          // Ignore short glitches
+          if (enterDuration > 50) {
+              if (enterDuration >= 1000) { 
+                  // --- LONG PRESS (>1s): SEND MESSAGE ---
+                  if (decodedMessageBuffer.length() > 0) {
+                      messageToSend = decodedMessageBuffer;
+                      decodedMessageBuffer = ""; 
+                      if (display) {
+                          display->setStatus(F("Sending..."));
+                          delay(500);
+                          display->clearAll();
+                      }
                   }
-              }
-          } else if (enterDuration > 50) {
-              // --- SHORT PRESS: ADD SPACE ---
-              decodedMessageBuffer += ' ';
-              if (display) {
-                  display->appendDecodedCharacter('_'); // Show underscore for space
-                  display->setStatus(F("Space Added"));
+              } else {
+                  // --- SHORT PRESS: ADD SPACE ---
+                  decodedMessageBuffer += ' ';
+                  Serial.println(F("[INPUT] Space Added"));
+                  if (display) {
+                      display->appendDecodedCharacter('_'); 
+                      display->setStatus(F("Space Added"));
+                  }
               }
           }
       }
