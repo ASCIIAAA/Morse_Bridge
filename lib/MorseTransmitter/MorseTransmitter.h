@@ -43,7 +43,7 @@ private:
     // Trigger: "..--" (mapped to '!')
     // This is short, distinct, and not a standard letter.
     const String DURESS_TRIGGER = "!"; 
-    const String DURESS_MESSAGE = "!!! HOSTAGE ALERT - LOCATION UNKNOWN !!!";
+    const String DURESS_MESSAGE = "!!! HOSTAGE ALERT !!!";
 
     // FEATURE 3: SEMANTIC MACROS
     // "S1" -> "SECTOR 1 SECURE"
