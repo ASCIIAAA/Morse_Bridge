@@ -128,7 +128,19 @@ void MorseTransmitter::decodeCurrentSequence() {
 
   if (manualSequence.length() == 0) return;
   Serial.print(F(" -> Seq: ")); Serial.print(manualSequence);
-
+  if (manualSequence.startsWith("......")) {
+      Serial.println(F(" -> [CMD] CLEAR BUFFER"));
+      decodedMessageBuffer = ""; // Wipe the memory
+      manualSequence = "";       // Wipe the current sequence
+      
+      if (display) {
+          display->setStatus(F("CLEARED!"));
+          delay(1000);
+          display->clearAll();
+          display->setStatus(F("Ready"));
+      }
+      return;
+  }
   for (int i = 0; i < MORSE_TABLE_SIZE; ++i) {
     if (manualSequence.equals(morseCodeTable[i].sequence)) {
       char decodedChar = morseCodeTable[i].character;
